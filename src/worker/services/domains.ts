@@ -1,7 +1,6 @@
 // Domain automation. Each step is idempotent and its state is saved in domains.setup_state, so
 // setup can resume after a failure or a closed tab, and "repair" simply runs the steps again.
 import type { Env } from '../env';
-import { PROVIDER_INFO, type ProviderType } from '../../shared/constants';
 import type { AppSettings } from '../db/settings';
 import { all, first, run } from '../db/db';
 import { CfError, cfFromEnv, type Cloudflare } from '../cloudflare/client';
@@ -192,16 +191,10 @@ async function stepDmarc(cf: Cloudflare, d: DomainRow): Promise<string> {
   return 'Added v=DMARC1; p=none.';
 }
 
-// For a while after Email Routing is turned on, Cloudflare reports a status such as
-// "misconfigured/locked" with no DNS record missing, then "ready" on its own (#28). The step waits
-// instead of failing, and the client asks again.
-class RoutingSettling extends Error {}
-
 async function stepVerify(cf: Cloudflare, d: DomainRow, workerName: string): Promise<string> {
   const routing = await getRouting(cf, d.zone_id);
   if (routing.status !== 'ready') {
     const problems = await routingDnsProblems(cf, d.zone_id);
-    if (!problems.length) throw new RoutingSettling(`Cloudflare is still finishing Email Routing (status "${routing.status}"). This can take a minute.`);
     throw new Error(`Email Routing status is "${routing.status}". ${problems.join('. ')}`.trim());
   }
   const rule = await getCatchAll(cf, d.zone_id);
@@ -229,12 +222,6 @@ export async function runDomainStep(env: Env, settings: AppSettings, domainId: n
     const allDone = DOMAIN_STEPS.every((s) => state.steps[s.id]?.status === 'done' || state.steps[s.id]?.status === 'skipped');
     await saveState(env.DB, d, state, allDone ? 'active' : undefined);
   } catch (e) {
-    if (e instanceof RoutingSettling) {
-      state.steps[step] = { status: 'running', message: e.message, at: Date.now() };
-      await saveState(env.DB, d, state);
-      d = await getDomain(env.DB, domainId);
-      return { domain: d, ...domainStatePayload(d) };
-    }
     const message =
       e instanceof CfError && e.isAuth
         ? `Cloudflare refused this: the token needs ${STEP_PERMISSION[step]}. Edit the token in Cloudflare, then retry.`
@@ -356,16 +343,7 @@ export async function checkDomainHealth(env: Env, settings: AppSettings, domainI
       detail: p.status === 'verified' ? 'Domain verified.' : p.last_error || 'Waiting for verification.',
     });
   }
-  if (!providers.length) {
-    // Cloudflare and SMTP have no domain API: once connected they can send for any domain, so there
-    // is nothing to verify and no row in provider_domains.
-    const noApi = (await all<{ name: string; type: string }>(env.DB, 'SELECT name, type FROM providers')).filter((p) => !PROVIDER_INFO[p.type as ProviderType].hasDomainApi);
-    items.push(
-      noApi.length
-        ? { key: 'provider', label: 'Sending', status: 'ok', detail: `Handled by ${noApi.map((p) => p.name).join(', ')}; no per-domain verification.` }
-        : { key: 'provider', label: 'Sending', status: 'warn', detail: 'No sending provider set up for this domain yet.' },
-    );
-  }
+  if (!providers.length) items.push({ key: 'provider', label: 'Sending', status: 'warn', detail: 'No sending provider set up for this domain yet.' });
 
   let conflicts: DomainHealth['conflicts'];
   try {

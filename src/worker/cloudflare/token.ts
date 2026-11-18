@@ -93,9 +93,6 @@ export async function checkPermissions(cf: Cloudflare, accountId: string, zoneId
         : Promise.resolve(noZone),
     workers_scripts: () => probe(() => cf.get(`/accounts/${accountId}/workers/scripts`)),
     email_routing_addresses: () => probe(() => cf.get(`/accounts/${accountId}/email/routing/addresses?per_page=5`)),
-    // 10105 means the permission is there but the account is not on Workers Paid: that is an
-    // account state, not a missing permission.
-    email_sending: () => probe(() => cf.get(`/accounts/${accountId}/email/sending/suppressions?per_page=1`), [10105]),
     account_analytics: () =>
       probe(() =>
         cf.graphql(
@@ -113,25 +110,6 @@ export async function checkPermissions(cf: Cloudflare, accountId: string, zoneId
     }),
   );
   return results;
-}
-
-// A token can be limited to some of the account's zones and still list all of them (Zone: Read
-// on every zone, DNS and Email Routing on a few). Reading each zone's DNS tells which ones it can
-// manage: true, false when Cloudflare refuses, null when unchecked or Cloudflare failed. Only the
-// first `limit` zones are read, to stay well inside the Worker's subrequest limit.
-export async function zoneAccess(cf: Cloudflare, zoneIds: string[], limit = 20): Promise<Map<string, boolean | null>> {
-  const access = new Map<string, boolean | null>(zoneIds.map((id) => [id, null]));
-  await Promise.all(
-    zoneIds.slice(0, limit).map(async (id) => {
-      try {
-        await cf.get(`/zones/${id}/dns_records?per_page=1`);
-        access.set(id, true);
-      } catch (e) {
-        if (e instanceof CfError && e.isAuth) access.set(id, false);
-      }
-    }),
-  );
-  return access;
 }
 
 export interface Zone {

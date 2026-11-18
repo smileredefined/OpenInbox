@@ -72,7 +72,7 @@ OpenInbox is built for everyday conversations. It is not a bulk or marketing sen
 
 **Mail**
 - Receive on any domain in your Cloudflare account. Email Routing is set up for you.
-- Send through Resend, Brevo, Mailjet, Cloudflare Email Sending or any SMTP server. When one provider hits its free limit, mail falls back to another.
+- Send through Resend, Brevo, Mailjet or any SMTP server. When one provider hits its free limit, mail falls back to another.
 - Threads, All Mail, search (`from:` `has:attachment` `before:`), labels, filters, snooze, scheduled and undo send.
 - Command palette and keyboard shortcuts, dark mode, mobile layout.
 
@@ -83,12 +83,10 @@ OpenInbox is built for everyday conversations. It is not a bulk or marketing sen
 **Admin**
 - Dashboard with traffic, free-tier usage and delivery and audit logs.
 - Domain health checks with one-click repair. DNS records (SPF, DKIM, DMARC) are written for you.
-- A sender logo per domain ([BIMI](https://bimigroup.org/)): upload a square SVG and OpenInbox hosts it and writes the `default._bimi` record.
 
 **Security**
 - HTML mail is sanitized and sandboxed, and remote images are blocked until you allow them.
 - Mail that fails SPF, DKIM or DMARC goes to Spam.
-- Optional senders' logos ([BIMI](https://bimigroup.org/)) next to mail that passes DMARC, fetched by the server so senders can't tell when you read their mail.
 - Optional two-factor sign-in. Stored credentials are encrypted.
 
 ## Screenshots
@@ -130,7 +128,7 @@ Everything runs inside your own Cloudflare account. There is no OpenInbox server
 | **Cloudflare Email Routing** | Receives mail for your domains and hands it to the Worker |
 | **One Worker** | Runs the web app, the API, inbound mail handling and scheduled jobs |
 | **One D1 database** | Stores mailboxes, messages, users and settings |
-| **A sending provider** | Delivers outgoing mail (Resend, Brevo, Mailjet, Cloudflare or SMTP), with fallback between them |
+| **A sending provider** | Delivers outgoing mail (Resend, Brevo, Mailjet or SMTP), with fallback between them |
 | **R2 (optional)** | Keeps large attachments |
 
 ## Deploy
@@ -139,7 +137,7 @@ Everything runs inside your own Cloudflare account. There is no OpenInbox server
 
 - A free Cloudflare account, with a domain on Cloudflare's nameservers.
 - A GitHub account.
-- A free account with a sending provider. This is only needed to send; receiving works without one. To send through Cloudflare itself instead, the account needs the Workers Paid plan.
+- A free account with a sending provider. This is only needed to send; receiving works without one.
 
 ### Steps
 
@@ -177,7 +175,7 @@ Everything runs inside your own Cloudflare account. There is no OpenInbox server
 </table>
 
 <details>
-<summary>The token's permissions (filled in for you by <a href="https://dash.cloudflare.com/?to=/:account/api-tokens&amp;permissionGroupKeys=%5B%7B%22key%22%3A%22c8fed203ed3043cba015a93ad1616f1f%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%224755a26eedb94da69e1066d98aa820be%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%223030687196b94b638145a3953da2b699%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%2279b3ec0d10ce4148a8f8bdc0cc5f97f2%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%2228f4b596e7d643029c524985477ae49a%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%229c88f9c5bce24ce7af9a958ba9c504db%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22e086da7e2179491d91ee5f35b3ca210a%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22e4589eb09e63436686cd64252a3aebeb%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%225df633d6b41c42bcaf5b4a62b9d14b64%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22b89a480218d04ceb98b4fe57ca29dc1f%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22c1fde68c7bcc44588cbb6ddbc16d6480%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22bf7481a1826f439697cb59a20b22293e%22%2C%22type%22%3A%22edit%22%7D%5D&amp;name=OpenInbox">this link</a>)</summary>
+<summary>The token's permissions (filled in for you by <a href="https://dash.cloudflare.com/?to=/:account/api-tokens&amp;permissionGroupKeys=%5B%7B%22key%22%3A%22c8fed203ed3043cba015a93ad1616f1f%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%224755a26eedb94da69e1066d98aa820be%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%223030687196b94b638145a3953da2b699%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%2279b3ec0d10ce4148a8f8bdc0cc5f97f2%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%2228f4b596e7d643029c524985477ae49a%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%229c88f9c5bce24ce7af9a958ba9c504db%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22e086da7e2179491d91ee5f35b3ca210a%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22e4589eb09e63436686cd64252a3aebeb%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22b89a480218d04ceb98b4fe57ca29dc1f%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22c1fde68c7bcc44588cbb6ddbc16d6480%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22bf7481a1826f439697cb59a20b22293e%22%2C%22type%22%3A%22edit%22%7D%5D&amp;name=OpenInbox">this link</a>)</summary>
 
 | Scope | Permission | Access | |
 | --- | --- | --- | --- |
@@ -190,7 +188,6 @@ Everything runs inside your own Cloudflare account. There is no OpenInbox server
 | Zone | Workers Routes | Edit | optional: app on `mail.yourdomain` |
 | Zone | Analytics | Read | optional: delivery log |
 | Account | Email Routing Addresses | Edit | optional: forwarding |
-| Account | Email Sending | Edit | optional: send through Cloudflare |
 | Account | Account Analytics | Read | optional: usage on the dashboard |
 | Account | Workers R2 Storage | Edit | optional: attachments bucket |
 
@@ -203,7 +200,7 @@ Everything runs inside your own Cloudflare account. There is no OpenInbox server
 | Worker requests | 100,000 / day per account |
 | D1 storage | 500 MB, roughly 50,000–100,000 messages |
 | Incoming message size | 25 MB |
-| Sending | Resend 100/day, Brevo 300/day, Mailjet 200/day; Cloudflare 3,000/month on Workers Paid |
+| Sending | Resend 100/day, Brevo 300/day, Mailjet 200/day |
 
 Mail is stored text-only by default, and attachments are kept only on messages under 950 KB. To keep every attachment, turn on R2 storage in **Admin → Integrations → Attachments**. R2 has a 10 GB free tier, but Cloudflare requires a payment method on the account first.
 
@@ -221,9 +218,7 @@ You are responsible for the mail you send. The OpenInbox maintainers accept no l
 
 ## Updating
 
-Updates are manual: your instance only changes when you choose to update it. When the admin overview shows a new version, read its release notes, then in your copy of the repo on GitHub run **Actions → Sync upstream → Run workflow**. Cloudflare redeploys automatically, and the Worker applies any database migrations itself.
-
-If your copy was created before automatic updates were removed, its workflow still has a weekly schedule. Once it has synced to a version with this change, those scheduled runs do nothing; you can also delete the `schedule:` lines from `.github/workflows/sync-upstream.yml`.
+In your copy of the repo on GitHub, run **Actions → Sync upstream → Run workflow**. It also runs weekly by itself. Cloudflare redeploys automatically, and the Worker applies any database migrations itself.
 
 > [!NOTE]
 > Don't click the Deploy button again to update. It creates a second, separate instance.
@@ -233,7 +228,6 @@ If your copy was created before automatic updates were removed, its workflow sti
 | Problem | What to do |
 | --- | --- |
 | Mail not arriving or not sending | Start with **Admin → Domains → Check health** and **Admin → Mail flow** |
-| No logo next to my mail | Mail apps show a [BIMI](https://bimigroup.org/) logo only when the domain's DMARC policy is `p=quarantine` or `p=reject`; **Admin → Domains → Sender logo** shows what is missing. Gmail and Apple Mail also need a mark certificate (VMC or CMC). Without one, Gmail may show the photo of a Google Account created for that address |
 | Locked out of the owner account | On the sign-in page, choose **Owner locked out?** and enter the owner email and your recovery key |
 | "A repository with that name already exists" on the Deploy form | An earlier deploy already made that repo. Change **Project name**, or [update](#updating) the existing instance instead |
 

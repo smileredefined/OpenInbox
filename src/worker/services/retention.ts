@@ -6,7 +6,6 @@ import { DAY } from '../lib/time';
 import { storeFor } from '../storage';
 import { deleteBlobs } from './threads';
 import { bumpState } from './mailboxes';
-import { SENDER_LOGO_WINDOW } from './sender-logos';
 
 export async function purgeOldTrash(env: Env, batch = 40): Promise<number> {
   const settings = await loadSettings(env.DB);
@@ -39,12 +38,10 @@ export async function cleanup(env: Env): Promise<void> {
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
     db.prepare('DELETE FROM auth_attempts WHERE window_start < ?').bind(now - DAY),
-    db.prepare('DELETE FROM known_logins WHERE last_at < ?').bind(now - 365 * DAY),
     db.prepare('DELETE FROM cache WHERE expires_at < ?').bind(now),
     db.prepare('DELETE FROM inbound_log WHERE received_at < ?').bind(now - 30 * DAY),
     db.prepare('DELETE FROM audit_log WHERE created_at < ?').bind(now - 365 * DAY),
     db.prepare('DELETE FROM autoreply_log WHERE sent_at < ?').bind(now - 30 * DAY),
-    db.prepare('DELETE FROM sender_logo_cache WHERE seen_at < ?').bind(now - SENDER_LOGO_WINDOW),
     db.prepare("DELETE FROM quota_usage WHERE day < ?").bind(new Date(now - 100 * DAY).toISOString().slice(0, 10)),
     db.prepare("DELETE FROM daily_stats WHERE day < ?").bind(new Date(now - 400 * DAY).toISOString().slice(0, 10)),
   ]);

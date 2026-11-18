@@ -53,19 +53,14 @@ export async function totpCode(secret: string, time = Date.now()): Promise<strin
   return hotp(base32Decode(secret), Math.floor(time / 30_000));
 }
 
-// The time step a code belongs to, or null. Accepts the previous, current and next step to allow
-// for clock drift. Sign-in also checks the step against the last one accepted, so a code works once.
-export async function matchTotpStep(secret: string, code: string, time = Date.now()): Promise<number | null> {
+// Accepts the previous, current and next step to allow for clock drift.
+export async function verifyTotp(secret: string, code: string, time = Date.now()): Promise<boolean> {
   const clean = code.replace(/\s/g, '');
-  if (!/^\d{6}$/.test(clean)) return null;
+  if (!/^\d{6}$/.test(clean)) return false;
   const key = base32Decode(secret);
   const step = Math.floor(time / 30_000);
-  for (const delta of [-1, 0, 1]) if ((await hotp(key, step + delta)) === clean) return step + delta;
-  return null;
-}
-
-export async function verifyTotp(secret: string, code: string, time = Date.now()): Promise<boolean> {
-  return (await matchTotpStep(secret, code, time)) !== null;
+  for (const delta of [-1, 0, 1]) if ((await hotp(key, step + delta)) === clean) return true;
+  return false;
 }
 
 export function otpauthUri(secret: string, account: string, issuer = 'OpenInbox'): string {

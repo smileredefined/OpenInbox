@@ -4,13 +4,12 @@ import { decryptJson } from '../lib/crypto';
 import { badRequest } from '../lib/errors';
 import type { ProviderType } from '../../shared/constants';
 import { BrevoAdapter, type BrevoConfig } from './brevo';
-import { CloudflareAdapter, type CloudflareConfig } from './cloudflare';
 import { MailjetAdapter, type MailjetConfig } from './mailjet';
 import { ResendAdapter, type ResendConfig } from './resend';
 import { SmtpAdapter, type SmtpConfig } from './smtp';
 import type { ProviderAdapter } from './types';
 
-export type ProviderConfig = ResendConfig | BrevoConfig | MailjetConfig | CloudflareConfig | SmtpConfig;
+export type ProviderConfig = ResendConfig | BrevoConfig | MailjetConfig | SmtpConfig;
 
 export interface ProviderRow {
   id: number;
@@ -37,8 +36,6 @@ export function createAdapter(env: Env, type: ProviderType, config: ProviderConf
       return new BrevoAdapter(config as BrevoConfig, env.BREVO_API_BASE || undefined);
     case 'mailjet':
       return new MailjetAdapter(config as MailjetConfig, env.MAILJET_API_BASE || undefined);
-    case 'cloudflare':
-      return new CloudflareAdapter(env);
     case 'smtp':
       return new SmtpAdapter(config as SmtpConfig);
     default:
@@ -53,7 +50,6 @@ export async function adapterFor(env: Env, row: ProviderRow): Promise<ProviderAd
 // Checks the shape of credentials submitted in the UI, per provider type.
 export function parseProviderConfig(type: ProviderType, input: Record<string, unknown>): ProviderConfig {
   const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string).trim() : '');
-  if (type === 'cloudflare') return {};
   if (type === 'resend' || type === 'brevo') {
     if (!str('apiKey')) throw badRequest('Enter the API key.');
     return { apiKey: str('apiKey') };
@@ -73,7 +69,6 @@ export function parseProviderConfig(type: ProviderType, input: Record<string, un
 // The credentials with secrets masked, for showing in the UI.
 export function maskedConfig(type: ProviderType, config: ProviderConfig): Record<string, string | number> {
   const mask = (s: string) => (s.length <= 8 ? '••••' : `${s.slice(0, 4)}••••${s.slice(-4)}`);
-  if (type === 'cloudflare') return {};
   if (type === 'smtp') {
     const c = config as SmtpConfig;
     return { host: c.host, port: c.port, security: c.security, username: c.username, password: c.password ? '••••••••' : '' };

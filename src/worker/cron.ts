@@ -6,13 +6,11 @@ import { all } from './db/db';
 import { processQueue } from './services/send';
 import { wakeSnoozed } from './services/threads';
 import { retryUnparsed } from './services/inbound';
-import { reparseQueued } from './services/reparse';
 import { refreshPendingDomains } from './services/providers';
 import { cleanup, purgeOldTrash } from './services/retention';
 import { checkDomainHealth } from './services/domains';
 import { checkForUpdate } from './services/updates';
 import { logError } from './lib/log';
-import { refreshSenderLogos } from './services/sender-logos';
 
 async function safely(name: string, fn: () => Promise<unknown>): Promise<void> {
   try {
@@ -38,10 +36,6 @@ export async function handleScheduled(controller: ScheduledController, env: Env)
   const minute = new Date(controller.scheduledTime).getUTCMinutes();
   if (minute % 10 === 0) {
     await safely('unparsed', () => retryUnparsed(env));
-    await safely('reparse', () => reparseQueued(env));
     await safely('domains', () => refreshPendingDomains(env));
   }
-  // Up to 25 lookups, so on their own minute: they don't share the free plan's 50 subrequests
-  // per invocation with the 10-minute jobs above.
-  if (minute % 10 === 5 && settings.senderLogos === 'on') await safely('sender-logos', () => refreshSenderLogos(env));
 }

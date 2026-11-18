@@ -468,8 +468,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          {/* The domains load with the dialog; until then a new inbox has no domain to go on. */}
-          <Button variant="primary" type="submit" form="create-user" loading={busy} disabled={mode === 'new' && !domain}>
+          <Button variant="primary" type="submit" form="create-user" loading={busy}>
             Add user
           </Button>
         </>

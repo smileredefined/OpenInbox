@@ -7,8 +7,6 @@ import {
   addDomainSchema,
   aliasSchema,
   appDomainSchema,
-  logoUrlSchema,
-  senderLogoSchema,
   createMailboxSchema,
   createUserSchema,
   destinationSchema,
@@ -30,7 +28,6 @@ import { badRequest, conflict, errorMessage, HttpError, notFound } from '../lib/
 import { decrypt, encrypt, encryptJson } from '../lib/crypto';
 import { newId } from '../lib/ids';
 import { parseJson } from '../lib/json';
-import { PROVIDER_INFO } from '../../shared/constants';
 import { audit } from '../services/audit';
 import { overview } from '../services/overview';
 import { cloudflareUsage, growthEstimate, storageSummary } from '../services/usage';
@@ -73,11 +70,9 @@ import {
 } from '../services/providers';
 import { listSuppressions, removeSuppression } from '../services/webhooks';
 import { retryMessage } from '../services/send';
-import { enforceDmarc, fetchLogo, getSenderLogo, removeSenderLogo, setSenderLogo } from '../services/bimi';
-import { noteRecentSenders } from '../services/sender-logos';
 import { deleteBlobs } from '../services/threads';
 import { Cloudflare, cfFromEnv, DEFAULT_CF_API } from '../cloudflare/client';
-import { checkPermissions, listZones, verifyToken, zoneAccess } from '../cloudflare/token';
+import { checkPermissions, listZones, verifyToken } from '../cloudflare/token';
 import { createDestination, deleteDestination, disableRule, listDestinations, listRules } from '../cloudflare/email-routing';
 import { R2S3Store, type R2Config } from '../storage/r2';
 import { detectWorker } from '../cloudflare/workers';
@@ -191,7 +186,6 @@ admin.get('/domains', async (c) => {
     'SELECT * FROM domains ORDER BY name',
   );
   const counts = await all<{ domain_id: number; n: number }>(c.env.DB, 'SELECT domain_id, COUNT(*) AS n FROM addresses GROUP BY domain_id');
-  const logos = new Map((await all<{ domain_id: number; updated_at: number }>(c.env.DB, 'SELECT domain_id, updated_at FROM sender_logos')).map((l) => [l.domain_id, l.updated_at]));
   return c.json(
     rows.map((d) => ({
       id: d.id,
@@ -201,7 +195,6 @@ admin.get('/domains', async (c) => {
       catchAllMailboxId: d.catch_all_mailbox_id,
       providerId: d.provider_id,
       appHostname: d.app_hostname,
-      logoUpdatedAt: logos.get(d.id) ?? null,
       addresses: counts.find((x) => x.domain_id === d.id)?.n ?? 0,
       health: d.health_checked_at ? parseJson(d.health, null) : null,
       healthCheckedAt: d.health_checked_at,
@@ -216,8 +209,7 @@ admin.get('/zones', async (c) => {
   const cf = await requireCf(c.env, settings);
   const zones = await listZones(cf, settings.cfAccountId);
   const taken = new Set((await all<{ name: string }>(c.env.DB, 'SELECT name FROM domains')).map((d) => d.name));
-  const access = await zoneAccess(cf, zones.filter((z) => !taken.has(z.name)).map((z) => z.id));
-  return c.json(zones.map((z) => ({ id: z.id, name: z.name, status: z.status, connected: taken.has(z.name), usable: access.get(z.id) ?? null })));
+  return c.json(zones.map((z) => ({ id: z.id, name: z.name, status: z.status, connected: taken.has(z.name) })));
 });
 
 admin.get('/zones/:zoneId', async (c) => {
@@ -293,41 +285,6 @@ admin.post('/domains/:id/app-domain', async (c) => {
   return c.json({ hostname, url: `https://${hostname}` });
 });
 
-// Sender logo (BIMI). Its public address is the app's address, as set in Admin settings.
-const appBase = (c: { req: { url: string } }, settings: AppSettings) => settings.appUrl ?? new URL(c.req.url).origin;
-
-admin.get('/domains/:id/logo', async (c) => {
-  const settings = await settingsOf(c);
-  return c.json(await getSenderLogo(c.env, settings, appBase(c, settings), intParam(c, 'id')));
-});
-
-admin.put('/domains/:id/logo', async (c) => {
-  const settings = await settingsOf(c);
-  const r = await setSenderLogo(c.env, settings, appBase(c, settings), intParam(c, 'id'), await body(c, senderLogoSchema));
-  await audit(c.env.DB, { userId: currentUser(c).id, action: 'domain.logo_set', target: r.record.name, ip: clientIp(c) });
-  return c.json(r);
-});
-
-admin.post('/domains/:id/logo/fetch', async (c) => {
-  await getDomain(c.env.DB, intParam(c, 'id'));
-  const { url } = await body(c, logoUrlSchema);
-  return c.json({ svg: await fetchLogo(url) });
-});
-
-admin.post('/domains/:id/dmarc/enforce', async (c) => {
-  const d = await getDomain(c.env.DB, intParam(c, 'id'));
-  const dmarc = await enforceDmarc(c.env, await settingsOf(c), d.id);
-  await audit(c.env.DB, { userId: currentUser(c).id, action: 'domain.dmarc_enforced', target: d.name, details: { record: dmarc.record }, ip: clientIp(c) });
-  return c.json(dmarc);
-});
-
-admin.delete('/domains/:id/logo', async (c) => {
-  const d = await getDomain(c.env.DB, intParam(c, 'id'));
-  await removeSenderLogo(c.env, await settingsOf(c), d.id);
-  await audit(c.env.DB, { userId: currentUser(c).id, action: 'domain.logo_removed', target: d.name, ip: clientIp(c) });
-  return c.json({ ok: true });
-});
-
 admin.post('/domains/:id/disable-rule', async (c) => {
   const settings = await settingsOf(c);
   const cf = await requireCf(c.env, settings);
@@ -356,9 +313,7 @@ admin.post('/providers', async (c) => {
   const r = await connectProvider(c.env, settings, input);
   await audit(c.env.DB, { userId: currentUser(c).id, action: 'provider.connected', target: input.type, ip: clientIp(c) });
   // Set up sending for every domain right away; failures show per domain and can be retried.
-  // Providers with no domain API (Cloudflare, SMTP) onboard domains elsewhere, so there is nothing
-  // to register here.
-  const domains = PROVIDER_INFO[input.type].hasDomainApi ? await all<{ id: number }>(c.env.DB, "SELECT id FROM domains WHERE status != 'disabled'") : [];
+  const domains = await all<{ id: number }>(c.env.DB, "SELECT id FROM domains WHERE status != 'disabled'");
   const results = [];
   for (const d of domains) {
     try {
@@ -539,7 +494,6 @@ admin.get('/settings', async (c) => {
     spamRetentionDays: s.spamRetentionDays,
     spamPolicy: s.spamPolicy,
     remoteImages: s.remoteImages,
-    senderLogos: s.senderLogos,
     appUrl: s.appUrl,
     version: __APP_VERSION__,
     keyRotation: !!c.env.ENCRYPTION_KEY_PREVIOUS,
@@ -548,10 +502,7 @@ admin.get('/settings', async (c) => {
 
 admin.patch('/settings', async (c) => {
   const input = await body(c, settingsSchema);
-  const before = await settingsOf(c);
-  // Only the fields sent: saving appUrl as undefined would delete it.
-  await saveSettings(c.env.DB, { ...input, ...(input.appUrl !== undefined ? { appUrl: input.appUrl.replace(/\/$/, '') } : {}) });
-  if (input.senderLogos === 'on' && before.senderLogos !== 'on') await noteRecentSenders(c.env.DB);
+  await saveSettings(c.env.DB, { ...input, appUrl: input.appUrl?.replace(/\/$/, '') });
   await audit(c.env.DB, { userId: currentUser(c).id, action: 'settings.updated', details: input, ip: clientIp(c) });
   return c.json({ ok: true });
 });

@@ -1,5 +1,4 @@
-// In-memory fakes of the Cloudflare, Resend, Brevo, Mailjet and GitHub APIs (plus public DNS over
-// HTTPS and a host for senders' logos), shared by the unit
+// In-memory fakes of the Cloudflare, Resend, Brevo, Mailjet and GitHub APIs, shared by the unit
 // tests (through a fetch spy), the end-to-end tests and local development (test/mock/server.ts).
 // Only erasable TypeScript syntax, so Node can run it directly.
 
@@ -40,11 +39,7 @@ export interface FakeState {
   resend: { domains: { id: string; name: string; status: string; records: Record<string, unknown>[] }[]; emails: Record<string, unknown>[]; failNext: number; webhooks: string[] };
   brevo: { domains: Record<string, { id: number; authenticated: boolean }>; emails: Record<string, unknown>[]; credits: number };
   mailjet: { dns: Record<string, { id: number }>; emails: Record<string, unknown>[] };
-  cfSending: { entitled: boolean; failNext: number; emails: Record<string, unknown>[] };
   release: { tag_name: string; html_url: string; body: string } | null;
-  // Public DNS (cloudflare-dns.com): TXT records by name. Files served at https://logos.test/<path>.
-  publicTxt: Record<string, string[]>;
-  logos: Record<string, string>;
   requests: { method: string; url: string; body?: unknown }[];
   seq: number;
 }
@@ -77,10 +72,7 @@ export function createFakeState(): FakeState {
     resend: { domains: [], emails: [], failNext: 0, webhooks: [] },
     brevo: { domains: {}, emails: [], credits: 300 },
     mailjet: { dns: {}, emails: [] },
-    cfSending: { entitled: true, failNext: 0, emails: [] },
     release: { tag_name: 'v1.0.0', html_url: 'https://github.com/example/openinbox/releases/tag/v1.0.0', body: 'First release.' },
-    publicTxt: {},
-    logos: {},
     requests: [],
     seq: 1,
   };
@@ -118,16 +110,6 @@ export async function handleFake(state: FakeState, req: Request): Promise<Respon
   const url = new URL(req.url);
   let service: string;
   let path = url.pathname;
-  if (url.hostname === 'cloudflare-dns.com' && path === '/dns-query') {
-    state.requests.push({ method: req.method, url: `doh${url.search}` });
-    const name = url.searchParams.get('name') ?? '';
-    const txt = state.publicTxt[name] ?? [];
-    return json({ Status: txt.length ? 0 : 3, Answer: txt.map((data) => ({ name, type: 16, TTL: 300, data: `"${data}"` })) });
-  }
-  if (url.hostname === 'logos.test') {
-    state.requests.push({ method: req.method, url: `logos${path}` });
-    return path in state.logos ? new Response(state.logos[path], { headers: { 'Content-Type': 'image/svg+xml' } }) : new Response('Not found', { status: 404 });
-  }
   const hostMap: Record<string, string> = { 'cf.test': 'cf', 'resend.test': 'resend', 'brevo.test': 'brevo', 'mailjet.test': 'mailjet', 'github.test': 'github' };
   if (hostMap[url.hostname]) {
     service = hostMap[url.hostname];
@@ -189,23 +171,6 @@ function cloudflare(state: FakeState, req: Request, url: URL, path: string, body
   if ((r = /^\/accounts\/[^/]+\/workers\/domains\/([^/]+)$/.exec(path)) && m === 'DELETE') {
     state.customDomains = state.customDomains.filter((d) => d.id !== r![1]);
     return new Response('', { status: 200 });
-  }
-  if (/^\/accounts\/[^/]+\/email\/sending\/suppressions$/.test(path)) {
-    if (!state.cfSending.entitled) return fail(403, 10105, 'email.sending.error.authentication.not_entitled');
-    return ok([]);
-  }
-  if ((r = /^\/accounts\/[^/]+\/email\/sending\/send$/.exec(path)) && m === 'POST') {
-    if (!state.cfSending.entitled) return fail(403, 10105, 'email.sending.error.authentication.not_entitled');
-    // Cloudflare checks the request shape before sending anything, which is what validate() relies on.
-    if (!body?.to || !body?.from || !body?.subject) return fail(400, 10001, 'email.sending.error.invalid_request_schema');
-    if (state.cfSending.failNext > 0) {
-      state.cfSending.failNext--;
-      return fail(500, 10002, 'email.sending.error.internal_server');
-    }
-    const address = (a: unknown) => (typeof a === 'string' ? a : String((a as { address?: string })?.address ?? ''));
-    const recipients = [body.to, body.cc, body.bcc].flat().filter(Boolean).map(address);
-    state.cfSending.emails.push(body);
-    return ok({ delivered: recipients, permanent_bounces: [], queued: [], message_id: `<${id(state, 'cfmail')}@cf.test>` });
   }
   if (/^\/accounts\/[^/]+\/email\/routing\/addresses$/.test(path)) {
     if (m === 'POST') {
@@ -442,29 +407,6 @@ function mailjet(state: FakeState, req: Request, path: string, body: any): Respo
     });
   }
   if (path === '/v3.1/send') {
-    // Like the real API, headers that Mailjet sets itself or that have their own property are refused.
-    const refused = Object.keys(body.Messages?.[0]?.Headers ?? {}).find((h) => /^(message-id|date|from|to|cc|bcc|subject|reply-to|list-id|x-mailer|user-agent)$/i.test(h));
-    if (refused) {
-      return json(
-        {
-          Messages: [
-            {
-              Status: 'error',
-              Errors: [
-                {
-                  ErrorIdentifier: crypto.randomUUID(),
-                  ErrorCode: 'send-0011',
-                  StatusCode: 400,
-                  ErrorMessage: 'Header cannot be customized using the "Headers" collection. Please use the dedicated property to set this header.',
-                  ErrorRelatedTo: [`Headers["${refused}"]`],
-                },
-              ],
-            },
-          ],
-        },
-        400,
-      );
-    }
     state.mailjet.emails.push(body);
     return json({ Messages: [{ Status: 'success', To: [{ Email: 'x', MessageUUID: crypto.randomUUID(), MessageID: state.seq++ }] }] });
   }

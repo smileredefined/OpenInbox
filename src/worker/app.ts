@@ -19,7 +19,6 @@ import { mail } from './routes/mail';
 import { compose } from './routes/compose';
 import { admin } from './routes/admin';
 import { webhooks } from './routes/webhooks';
-import { bimi } from './routes/bimi';
 
 export const app = new Hono<AppBindings>().basePath('/api');
 
@@ -74,7 +73,7 @@ app.use('*', async (c, next) => {
   await migrated(c.env);
   c.set('settings', await loadSettings(c.env.DB));
   const path = c.req.path;
-  if (path.startsWith('/api/webhooks/') || path.startsWith('/api/bimi/')) return next();
+  if (path.startsWith('/api/webhooks/')) return next();
   const s = await loadSession(c);
   c.set('user', s?.user ?? null);
   c.set('session', s?.session ?? null);
@@ -87,7 +86,6 @@ app.use('*', async (c, next) => {
 app.route('/setup', setup);
 app.route('/auth', auth);
 app.route('/webhooks', webhooks);
-app.route('/bimi', bimi);
 
 // A forced password change still allows changing the password (and reading the session).
 app.use('/account/*', async (c, next) => {
